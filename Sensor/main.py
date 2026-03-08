@@ -1,5 +1,5 @@
-#main.py
 import threading
+import time  # 🚀 ضفنا المكتبة دي هنا علشان نقدر نعمل Sleep
 
 from monitoring.sniffer import start_monitoring
 from detection.threat_manager import ThreatManager
@@ -54,7 +54,17 @@ def main():
     # --------------------------------
     # Start monitoring
     # --------------------------------
-    start_monitoring()
+    start_monitoring(pcap_file="wpa-Induction.pcap")
+
+    # 🚀 التعديل الجديد: السكريبت هيفضل شغال علشان الـ WebSocket يبعت الداتا
+    print("\n[System] 🟢 تم قراءة الملف بنجاح. النظام مستمر في العمل لإرسال البيانات للداشبورد...")
+    print("[System] ⌨️  اضغط CTRL+C للإيقاف.")
+    
+    try:
+        while True:
+            time.sleep(1) # السكريبت بيريح ثانية ويلف تاني بدون ما يستهلك البروسيسور
+    except KeyboardInterrupt:
+        print("\n🛑 جاري إيقاف السنسور... سلام يا هندسة!")
 
 
 if __name__ == "__main__":

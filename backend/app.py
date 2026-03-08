@@ -38,13 +38,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 
 # Enable CORS
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ['http://localhost:3000', 'http://localhost:5000', 'https://localhost:3000'],
-        "methods": ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        "allow_headers": ['Content-Type', 'Authorization']
-    }
-})
+# Enable CORS - التعديل هنا يا هندسة
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Initialize Database
 db.init_app(app)

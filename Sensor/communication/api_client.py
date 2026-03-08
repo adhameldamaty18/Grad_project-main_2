@@ -10,7 +10,7 @@ class APIClient:
         # 🔐 Credentials (For Testing)
         # ===============================
 
-        self.backend_url = "http://192.168.201.130:5000"  # عدل الـ IP هنا لو لازم
+        self.backend_url = "http://localhost:5000"  # عدل الـ IP هنا لو لازم
 
         self.sensor_id = "admin"
         self.secret_key = "admin123"

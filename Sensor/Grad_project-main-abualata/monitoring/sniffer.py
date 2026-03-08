@@ -1,85 +1,74 @@
-# monitoring/sniffer.py
-
-from scapy.all import sniff
-from scapy.layers.dot11 import Dot11, Dot11Beacon
 import threading
-import os
 import time
-import datetime
+import os
+import subprocess # علشان ننفذ أوامر اللينكس
 
-from config import INTERFACE, LOCKED_CHANNEL
-from utils import get_ssid, extract_channel
-from core.event_bus import event_queue
+from monitoring.sniffer import start_monitoring
+from detection.threat_manager import ThreatManager
+from prevention.response_engine import ResponseEngine
+from communication.ws_client import WSClient
+from communication.api_client import APIClient
 
-clients_map = {}  # {bssid: set(client_macs)}
+def setup_monitor_mode(interface="wlan0"):
+    """بتحاول تخلي الكارت في وضع المراقبة، ولو فشلت بترجع False"""
+    try:
+        print(f"[System] 🔍 Checking for WiFi Adapter ({interface})...")
+        # بنشوف هل الكارت موجود أصلاً؟
+        check_iface = subprocess.run(["iw", "dev", interface, "info"], capture_output=True, text=True)
+        
+        if check_iface.returncode != 0:
+            print(f"[System] ⚠️  Adapter {interface} not found.")
+            return False
 
-def is_open_network(packet):
-    if packet.haslayer(Dot11Beacon):
-        cap = packet[Dot11Beacon].cap
-        return not cap.privacy
-    return False
+        print(f"[System] 🛠️  Setting {interface} to Monitor Mode...")
+        # أوامر تحويل الكارت لمونيتور مود
+        subprocess.run(["sudo", "ip", "link", "set", interface, "down"], check=True)
+        subprocess.run(["sudo", "iw", interface, "set", "type", "monitor"], check=True)
+        subprocess.run(["sudo", "ip", "link", "set", interface, "up"], check=True)
+        
+        print(f"[System] ✅ {interface} is now in MONITOR MODE.")
+        return True
+    except Exception as e:
+        print(f"[System] ❌ Failed to set Monitor Mode: {e}")
+        return False
 
-def build_event(packet):
-    dot11 = packet[Dot11]
+def main():
+    print("🚀 Starting ZeinaGuard Sensor...")
 
-    bssid = dot11.addr2
-    ssid = get_ssid(packet)
-    channel = extract_channel(packet)
-    signal = getattr(packet, "dBm_AntSignal", None)
+    # 1. التوثيق (Authentication)
+    api = APIClient()
+    token = api.authenticate_sensor()
 
-    clients_count = len(clients_map.get(bssid, set()))
+    # 2. الـ WebSocket
+    ws = WSClient(token=token)
+    threading.Thread(target=ws.connect_to_server, daemon=True).start()
 
-    return {
-        # 🚀 التعديل هنا عشان الداتا تتبعت للـ Dashboard بدون مشاكل
-        "timestamp": datetime.datetime.now().isoformat(),
-        "bssid": bssid,
-        "ssid": ssid,
-        "channel": channel,
-        "signal": signal,
-        "encryption": "OPEN" if is_open_network(packet) else "SECURED",
-        "clients": clients_count
-    }
+    # 3. إدارة التهديدات والوقاية
+    threat_manager = ThreatManager()
+    threading.Thread(target=threat_manager.start, daemon=True).start()
 
-def handle_packet(packet):
-    if not packet.haslayer(Dot11):
-        return
+    response_engine = ResponseEngine()
+    threading.Thread(target=response_engine.start, daemon=True).start()
 
-    dot11 = packet[Dot11]
+    # 🚀 التعديل الجوهري: اختيار مصدر البيانات
+    interface_name = "wlan0" # غير الاسم ده لاسم الكارت بتاعك (زي wlan1)
+    
+    if setup_monitor_mode(interface_name):
+        print(f"[Sniffer] 📡 Starting LIVE Monitoring on {interface_name}...")
+        # بنشغل السنيفر على الكارت الحقيقي
+        start_monitoring(interface=interface_name)
+    else:
+        print(f"[Sniffer] 📁 Switching to Offline Mode (PCAP Simulation)...")
+        # لو مفيش كارت، بنرجع للملف القديم بتاعنا
+        start_monitoring(pcap_file="wpa-Induction.pcap")
 
-    # Beacon (Access Point discovery)
-    if packet.haslayer(Dot11Beacon) and dot11.addr2:
-        event = build_event(packet)
-        event_queue.put(event)
-
-    # Data frames (Client ↔ AP)
-    if dot11.type == 2:
-        bssid = dot11.addr3
-        src = dot11.addr2
-
-        if bssid and src and bssid != src:
-            clients_map.setdefault(bssid, set()).add(src)
-
-def channel_hopper():
-    import config
-
-    while True:
-        # لو فيه channel مقفول عليه
-        if config.LOCKED_CHANNEL is not None:
-            os.system(f"iwconfig {INTERFACE} channel {config.LOCKED_CHANNEL}")
+    # الحفاظ على السكريبت شغال
+    print("\n[System] 🟢 ZeinaGuard is running. Press CTRL+C to stop.")
+    try:
+        while True:
             time.sleep(1)
-            continue
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping Sensor...")
 
-        # لو مفيش lock نكمل hopping
-        for ch in range(1, 14):
-            if config.LOCKED_CHANNEL is not None:
-                break
-
-            os.system(f"iwconfig {INTERFACE} channel {ch}")
-            time.sleep(0.4)
-
-def start_monitoring():
-    hopper = threading.Thread(target=channel_hopper)
-    hopper.daemon = True
-    hopper.start()
-
-    sniff(iface=INTERFACE, prn=handle_packet, store=False)
+if __name__ == "__main__":
+    main()

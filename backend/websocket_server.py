@@ -9,6 +9,7 @@ from datetime import datetime
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from redis import Redis
 from functools import wraps
+from flask import request
 
 # Redis connection for event bus
 redis_client = Redis.from_url(
